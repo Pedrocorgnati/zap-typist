@@ -13,16 +13,15 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any
 
-from zap_typist.db.models import Setting
+from zap_typist.db.models import CONTACT_HISTORY_WINDOW_DAYS, Setting
 from zap_typist.db.session import SessionFactory
 
 logger = logging.getLogger(__name__)
 
 try:
-    from zap_typist.imbound.constants.feminine_names import FEMININE_NAMES_SEED
     from zap_typist.imbound.constants.desire_rules import DESIRE_RULES_SEED
+    from zap_typist.imbound.constants.feminine_names import FEMININE_NAMES_SEED
     from zap_typist.imbound.constants.message_templates import (
         MSG_TEMPLATE_1,
         MSG_TEMPLATE_2,
@@ -66,7 +65,7 @@ def _build_defaults() -> dict[str, str]:
         "default_window_days": json.dumps(["1", "2", "3", "4", "5"]),
         "default_window_start": "09:00",
         "default_window_end": "18:00",
-        "contact_history_window_days": "60",
+        "contact_history_window_days": str(CONTACT_HISTORY_WINDOW_DAYS),
         "app_version": "0.1.0",
         "seed_version": "1",
     }

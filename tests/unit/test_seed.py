@@ -95,8 +95,6 @@ def test_seed_desire_rules_has_catchall_last(seed_session):
 def test_seed_rollback_on_commit_error(seed_session, monkeypatch):
     from zap_typist.db.seed import run_seed
 
-    original_commit = seed_session().commit
-
     def _failing_commit():
         raise RuntimeError("simulated commit failure")
 

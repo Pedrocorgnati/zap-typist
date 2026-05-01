@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 # ---------- single_instance ----------
 
 
@@ -76,7 +75,7 @@ def test_single_instance_get_existing_pid(tmp_path: Path) -> None:
 
 
 def test_pii_filter_redacts_canonical_fields() -> None:
-    from zap_typist.utils.logger import PIIFilter, PII_FIELDS
+    from zap_typist.utils.logger import PII_FIELDS, PIIFilter
 
     f = PIIFilter()
     record = logging.LogRecord(
