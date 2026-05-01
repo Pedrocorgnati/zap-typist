@@ -19,6 +19,11 @@ build/
 # Logs
 *.log
 
+# Local DB / coverage
+*.db
+.coverage
+.coverage.*
+
 # OS
 .DS_Store
 Thumbs.db

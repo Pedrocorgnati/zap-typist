@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 import sys
 import time
@@ -8,6 +9,11 @@ from zap_typist.utils.logger import get_logger
 
 logger = get_logger("zap_typist.app")
 
+EXIT_OK = 0
+EXIT_LOCK = 1
+EXIT_OS_ERROR = 2
+EXIT_SCHEMA_ERROR = 3
+
 
 def _setup_excepthook() -> None:
     def handle_exception(exc_type, exc_value, exc_tb):  # noqa: ANN001
@@ -15,6 +21,20 @@ def _setup_excepthook() -> None:
             sys.__excepthook__(exc_type, exc_value, exc_tb)
             return
         logger.critical("unhandled_exception", exc_info=(exc_type, exc_value, exc_tb))
+        # US-016 [SUCCESS]: se ja ha QApplication, mostrar QMessageBox legivel.
+        # Falhas no proprio hook NUNCA podem propagar (caso contrario ficamos em loop).
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            if QApplication.instance() is not None:
+                _show_blocking_modal(
+                    "Erro inesperado",
+                    "Ocorreu um erro inesperado. Verifique o log em "
+                    "~/.local/share/zap-typist/logs/zap-typist.log",
+                    level="critical",
+                )
+        except Exception:  # noqa: BLE001
+            pass
 
     sys.excepthook = handle_exception
 
@@ -116,19 +136,53 @@ def main() -> int:
             "Feche-a antes de abrir uma nova.",
             level="critical",
         )
-        return 1
+        return EXIT_LOCK
 
     try:
         # BOOT-003: XDG dirs 0700
         from zap_typist.db.models import APP_DATA_DIR
         from zap_typist.utils.cache import ensure_cache_dir
 
-        APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
         try:
-            os.chmod(APP_DATA_DIR, 0o700)
-        except OSError:
-            pass
-        ensure_cache_dir()  # cria CACHE_DIR + 0700; LOG_DIR já criado por get_logger
+            APP_DATA_DIR.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(APP_DATA_DIR, 0o700)
+            except OSError:
+                pass
+            ensure_cache_dir()  # cria CACHE_DIR + 0700; LOG_DIR já criado por get_logger
+        except PermissionError as exc:
+            # US-013 [SUCCESS]: permissao negada
+            logger.critical(
+                "xdg_permission_denied",
+                extra={"path": str(APP_DATA_DIR), "error": str(exc)},
+            )
+            _show_blocking_modal(
+                "Permissao negada",
+                f"Nao foi possivel criar o diretorio de dados:\n{APP_DATA_DIR}\n\n"
+                "Ajuste as permissoes (chmod u+w) e tente novamente.",
+                level="critical",
+            )
+            return EXIT_OS_ERROR
+        except OSError as exc:
+            if exc.errno == errno.ENOSPC:
+                logger.critical("xdg_disk_full", extra={"path": str(APP_DATA_DIR)})
+                _show_blocking_modal(
+                    "Disco cheio",
+                    "Disco cheio - nao foi possivel criar o diretorio de dados. "
+                    "Libere espaco em disco e tente novamente.",
+                    level="critical",
+                )
+            else:
+                logger.critical(
+                    "xdg_io_error",
+                    extra={"path": str(APP_DATA_DIR), "errno": exc.errno},
+                )
+                _show_blocking_modal(
+                    "Erro de I/O",
+                    f"Erro ao acessar diretorio de dados:\n{APP_DATA_DIR}\n\nDetalhe: {exc}",
+                    level="critical",
+                )
+            return EXIT_OS_ERROR
 
         # Wayland warning (informativo, não bloqueia)
         if _is_wayland():
@@ -141,11 +195,53 @@ def main() -> int:
                 level="warning",
             )
 
-        # BOOT-004: DB init + seed
+        # BOOT-004: DB init + validate + seed (com tratamento legivel)
         from zap_typist.db.seed import run_seed
-        from zap_typist.db.session import init_db
+        from zap_typist.db.session import init_db, validate_schema
 
-        init_db()
+        try:
+            init_db()
+        except PermissionError as exc:
+            logger.critical("db_permission_denied", extra={"error": str(exc)})
+            _show_blocking_modal(
+                "Permissao negada",
+                f"Nao foi possivel criar o banco de dados.\n\nDetalhe: {exc}",
+                level="critical",
+            )
+            return EXIT_OS_ERROR
+        except OSError as exc:
+            if exc.errno == errno.ENOSPC:
+                logger.critical("db_disk_full")
+                _show_blocking_modal(
+                    "Disco cheio",
+                    "Disco cheio - nao foi possivel criar o banco de dados. "
+                    "Libere espaco em disco e tente novamente.",
+                    level="critical",
+                )
+            else:
+                logger.critical("db_io_error", extra={"errno": exc.errno})
+                _show_blocking_modal(
+                    "Erro ao inicializar o banco",
+                    f"Erro de I/O ao criar o banco de dados.\nDetalhe: {exc}",
+                    level="critical",
+                )
+            return EXIT_OS_ERROR
+
+        # US-009 [ERROR]: detectar schema corrompido apos init_db
+        try:
+            validate_schema()
+        except RuntimeError as exc:
+            logger.critical("schema_invalid", extra={"error": str(exc)})
+            _show_blocking_modal(
+                "Banco corrompido",
+                "O banco de dados parece corrompido (faltam tabelas esperadas).\n\n"
+                f"Detalhe: {exc}\n\n"
+                "Ultima saida: feche o app e mova ~/.local/share/zap-typist/zap_typist.db "
+                "para um backup; o app vai recriar o banco no proximo boot.",
+                level="critical",
+            )
+            return EXIT_SCHEMA_ERROR
+
         run_seed(force=False)
 
         # QApplication + MainWindow

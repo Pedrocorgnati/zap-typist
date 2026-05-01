@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from zap_typist.db.models import (
     Flow,
@@ -26,8 +26,8 @@ def make_lead(**overrides) -> Lead:
         status=LeadStatus.pendente,
         observacao="",
         send_attempts=0,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Lead(**defaults)
@@ -49,8 +49,8 @@ def make_flow(**overrides) -> Flow:
         rate_limit_batch_pause_max=1800,
         is_active=False,
         is_paused=False,
-        created_at=datetime.now(timezone.utc),
-        updated_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
     )
     defaults.update(overrides)
     return Flow(**defaults)
@@ -58,5 +58,5 @@ def make_flow(**overrides) -> Flow:
 
 def make_setting(name: str, value: str) -> Setting:
     return Setting(
-        name=name, value=value, updated_at=datetime.now(timezone.utc)
+        name=name, value=value, updated_at=datetime.now(UTC)
     )

@@ -28,6 +28,22 @@ python -m zap_typist
 
 A janela principal abre com 4 abas e a barra de status exibe "DB pronto, 0 leads".
 
+## Comandos disponíveis (Makefile)
+
+Para acelerar o ciclo de desenvolvimento, use o `Makefile` na raiz:
+
+```bash
+make setup       # cria .venv, instala dependências (chama scripts/bootstrap.sh)
+make dev         # equivale a `python -m zap_typist`
+make test        # roda pytest -v
+make lint        # ruff check src tests
+make type-check  # mypy src
+make clean       # remove .venv e caches
+make help        # lista todos os targets
+```
+
+O `scripts/bootstrap.sh` cuida da criação do venv, instalação editável e checagem de pré-requisitos.
+
 ## Estrutura
 
 ```
