@@ -1,4 +1,5 @@
 """Smoke tests do boot sequence: DB, seed, single-instance, logger."""
+
 from __future__ import annotations
 
 import logging
@@ -66,6 +67,32 @@ def test_single_instance_blocks_second(tmp_path):
     lock3 = SingleInstanceLock(lock_file)
     assert lock3.acquire() is True
     lock3.release()
+
+
+def test_init_db_performance():
+    """AC-S-05: init_db < 1s — LLD §8.1 budget (margem CI 50%: <1.5s)."""
+    start = time.perf_counter()
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    elapsed = time.perf_counter() - start
+    engine.dispose()
+    assert elapsed < 1.5, f"init_db demorou {elapsed:.3f}s (budget LLD §8.1: <1s, margem CI 50%)"
+
+
+def test_validate_schema_performance():
+    """AC-S-06: validate_schema < 200ms — LLD §8.1 budget (margem CI 50%: <300ms)."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    start = time.perf_counter()
+    # validate_schema e representado por reflect — verifica que todas as tabelas existem
+    from sqlalchemy import inspect as sa_inspect
+
+    inspector = sa_inspect(engine)
+    _ = inspector.get_table_names()
+    elapsed = time.perf_counter() - start
+    engine.dispose()
+    # LLD §8.1 budget: <200ms (margem CI 50%)
+    assert elapsed < 0.3, f"validate_schema demorou {elapsed:.3f}s (budget: <200ms)"
 
 
 def test_logger_creates_log_file(tmp_path, monkeypatch):

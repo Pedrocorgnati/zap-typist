@@ -1,9 +1,17 @@
+"""Lock cooperativo single-instance — Linux-only por design.
+
+Usa `/proc/{pid}/status` (procfs) para detectar se o PID gravado no `.lock`
+ainda esta vivo. macOS e Windows nao sao suportados (ver ADR-002:
+docs/zap-typist/project/adrs/ADR-002-pid-lock-cooperativo-linux-only.md).
+"""
+
 from __future__ import annotations
 
+import contextlib
 import os
 from pathlib import Path
 
-from zap_typist.db.models import LOCK_FILE
+from zap_typist.config.paths import LOCK_FILE
 
 
 class SingleInstanceLock:
@@ -26,10 +34,8 @@ class SingleInstanceLock:
 
     def release(self) -> None:
         if self._acquired and self.lock_file.exists():
-            try:
+            with contextlib.suppress(OSError):
                 self.lock_file.unlink()
-            except OSError:
-                pass
         self._acquired = False
 
     def get_existing_pid(self) -> int | None:
@@ -40,6 +46,7 @@ class SingleInstanceLock:
 
     @staticmethod
     def _is_pid_alive(pid: int) -> bool:
+        # Linux-only por design — ver ADR-002.
         return Path(f"/proc/{pid}/status").exists()
 
     def __enter__(self) -> SingleInstanceLock:

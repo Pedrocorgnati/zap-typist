@@ -1,4 +1,5 @@
 """Testes das constantes de path — absolutos, derivados e override por env var."""
+
 import importlib
 
 
@@ -25,13 +26,13 @@ def test_db_path_is_zap_typist_db():
 
 def test_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("ZAP_TYPIST_DATA_DIR", str(tmp_path))
-    import zap_typist.db.models as m
+    import zap_typist.config.paths as p
 
-    importlib.reload(m)
-    assert m.APP_DATA_DIR == tmp_path.resolve()
-    assert m.DB_PATH == tmp_path.resolve() / "zap_typist.db"
+    importlib.reload(p)
+    assert p.APP_DATA_DIR == tmp_path.resolve()
+    assert p.DB_PATH == tmp_path.resolve() / "zap_typist.db"
     monkeypatch.delenv("ZAP_TYPIST_DATA_DIR", raising=False)
-    importlib.reload(m)
+    importlib.reload(p)
 
 
 def test_origem_padrao_aba1_constant():

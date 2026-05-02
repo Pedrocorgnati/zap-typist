@@ -1,9 +1,20 @@
-# Zap Typist — runtime + dev dependencies (pinned mínimo)
-PySide6>=6.6
-SQLAlchemy>=2.0
-pydantic-settings>=2.0
-python-dotenv>=1.0
+# Zap Typist — runtime + dev dependencies
+# Source of truth: pyproject.toml. Upper bounds replicados aqui para
+# manter paridade entre `pip install -r requirements.txt` e
+# `pip install -e .[dev]`. Atualizado em 2026-05-01 para fechar W-DEP-1.
+
+# Runtime
+PySide6>=6.6,<7
+SQLAlchemy>=2.0,<3
+pydantic>=2.0,<3
+pydantic-settings>=2.0,<3
+python-dotenv>=1.0,<2
+
+# Dev
 pytest>=8.0
+pytest-cov>=5.0
 pytest-qt>=4.4
 ruff>=0.4
 mypy>=1.10
+factory-boy>=3.3
+deptry>=0.20

@@ -8,15 +8,14 @@ exclusivamente pelo filesystem (~/.local/share/zap-typist com permissao 0700).
 Nao logar nenhum desses campos. Nao serializar para fora do processo.
 Risco aceito e documentado em PRD.md (NFR Seguranca) e THREAT-MODEL.md.
 """
+
 from __future__ import annotations
 
 import enum
-import os
-from datetime import datetime
-from pathlib import Path
+from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import (
-    DDL,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -24,39 +23,63 @@ from sqlalchemy import (
     Index,
     Integer,
     Text,
-    event,
+    TypeDecorator,
     text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+# Re-export de paths e constantes operacionais (compat com consumers que
+# ainda importam de zap_typist.db.models). Fontes canonicas:
+#   - paths        -> zap_typist.config.paths
+#   - operacionais -> zap_typist.domain.constants
+from zap_typist.config.paths import APP_DATA_DIR as APP_DATA_DIR
+from zap_typist.config.paths import CACHE_DIR as CACHE_DIR
+from zap_typist.config.paths import CHROME_PROFILES_DIR as CHROME_PROFILES_DIR
+from zap_typist.config.paths import DB_PATH as DB_PATH
+from zap_typist.config.paths import LOCK_FILE as LOCK_FILE
+from zap_typist.config.paths import LOG_DIR as LOG_DIR
+from zap_typist.domain.constants import (
+    CONTACT_HISTORY_WINDOW_DAYS as CONTACT_HISTORY_WINDOW_DAYS,
+)
+from zap_typist.domain.constants import ORIGEM_PADRAO_ABA1 as ORIGEM_PADRAO_ABA1
+from zap_typist.domain.constants import RATE_LIMIT_MAX_POR_HORA as RATE_LIMIT_MAX_POR_HORA
+
+
+def _utc_now() -> datetime:
+    """Helper para defaults Python tz-aware. UTC e politica do projeto."""
+    return datetime.now(UTC)
+
+
+class UTCDateTime(TypeDecorator[datetime]):
+    """DateTime que preserva UTC em SQLite (que nao armazena tz nativamente).
+
+    On bind: normaliza aware->UTC e escreve naive UTC (formato ISO sem offset).
+    On result: re-anexa tzinfo=UTC ao naive lido do banco.
+    Politica do projeto: todo timestamp e UTC; conversao para horario local
+    acontece apenas na UI.
+    """
+
+    impl = DateTime
+    cache_ok = True
+
+    def process_bind_param(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            # Aceita naive como UTC (tolerante para defaults SQL legacy).
+            return value
+        return value.astimezone(UTC).replace(tzinfo=None)
+
+    def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
+
 
 class Base(DeclarativeBase):
     """Base declarativa SQLAlchemy 2.x."""
-
-
-# ---------------------------------------------------------------------------
-# Constantes de path (XDG, HLD §APP_DATA_DIR, INT-034)
-# ---------------------------------------------------------------------------
-
-_DATA_DIR_OVERRIDE = os.environ.get("ZAP_TYPIST_DATA_DIR")
-APP_DATA_DIR: Path = (
-    Path(_DATA_DIR_OVERRIDE).expanduser().resolve()
-    if _DATA_DIR_OVERRIDE
-    else Path.home() / ".local" / "share" / "zap-typist"
-)
-CACHE_DIR: Path = APP_DATA_DIR / "cache"
-DB_PATH: Path = APP_DATA_DIR / "zap_typist.db"
-CHROME_PROFILES_DIR: Path = APP_DATA_DIR / "chrome-profiles"
-LOCK_FILE: Path = APP_DATA_DIR / ".lock"
-LOG_DIR: Path = APP_DATA_DIR / "logs"
-
-# ---------------------------------------------------------------------------
-# Constantes operacionais (PRD/HLD, FEAT-skel-043)
-# ---------------------------------------------------------------------------
-
-RATE_LIMIT_MAX_POR_HORA: int = 30
-CONTACT_HISTORY_WINDOW_DAYS: int = 60
-ORIGEM_PADRAO_ABA1: str = "getNinjas"
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +125,15 @@ class Lead(Base):
             "'whatsapp_valido','enviado','falhou','invalido')",
             name="ck_leads_status_enum",
         ),
+        # E.164: '+' seguido de 10-15 digitos. SQLite GLOB nao valida tamanho;
+        # length() complementa. Validacao forte ocorre no boundary Pydantic.
+        CheckConstraint(
+            "numero_e164 IS NULL OR ("
+            "  numero_e164 GLOB '+[0-9]*' "
+            "  AND length(numero_e164) BETWEEN 11 AND 16"
+            ")",
+            name="ck_leads_numero_e164_format",
+        ),
         Index("idx_leads_status", "status"),
         Index("idx_leads_numero_e164", "numero_e164"),
         Index("idx_leads_status_created_at", "status", "created_at"),
@@ -116,19 +148,18 @@ class Lead(Base):
     info_extra: Mapped[str | None] = mapped_column(Text, nullable=True)
     numero_e164: Mapped[str | None] = mapped_column(Text, nullable=True)
     origem: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(
-        Text, nullable=False, default=LeadStatus.pendente.value
-    )
+    status: Mapped[str] = mapped_column(Text, nullable=False, default=LeadStatus.pendente.value)
     observacao: Mapped[str | None] = mapped_column(Text, nullable=True)
-    whatsapp_validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    whatsapp_validated_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     send_attempts: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default=text("0")
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        UTCDateTime,
+        nullable=False,
+        default=_utc_now,
+        onupdate=_utc_now,
     )
 
 
@@ -140,7 +171,10 @@ class Setting(Base):
     name: Mapped[str] = mapped_column(Text, primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        UTCDateTime,
+        nullable=False,
+        default=_utc_now,
+        onupdate=_utc_now,
     )
 
 
@@ -153,6 +187,10 @@ class Flow(Base):
         CheckConstraint(
             f"rate_limit_per_hour <= {RATE_LIMIT_MAX_POR_HORA}",
             name="ck_flows_rate_limit_max",
+        ),
+        CheckConstraint(
+            "json_valid(time_window_days) AND json_type(time_window_days) = 'array'",
+            name="ck_flows_time_window_days_json",
         ),
         Index("idx_flows_is_active", "is_active"),
     )
@@ -177,15 +215,16 @@ class Flow(Base):
         Boolean, nullable=False, default=False, server_default=text("0")
     )
     pause_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    paused_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    paused_at: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     last_lead_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("leads.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
-    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=_utc_now)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        UTCDateTime,
+        nullable=False,
+        default=_utc_now,
+        onupdate=_utc_now,
     )
 
     contact_history: Mapped[list[ContactHistory]] = relationship(back_populates="flow")
@@ -207,31 +246,16 @@ class ContactHistory(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     numero_e164: Mapped[str] = mapped_column(Text, nullable=False)
     flow_id: Mapped[int] = mapped_column(Integer, ForeignKey("flows.id"), nullable=False)
-    touched_at: Mapped[datetime] = mapped_column(
-        DateTime, nullable=False, server_default=text("CURRENT_TIMESTAMP")
-    )
+    touched_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=_utc_now)
 
     flow: Mapped[Flow] = relationship(back_populates="contact_history")
 
 
 # ---------------------------------------------------------------------------
-# Triggers updated_at (via DDL event, FEAT-skel-034)
-# contact_history nao tem updated_at — registro append-only
+# Politica de timestamps (D-01, ADR pendente):
+#   - Todos os DateTime sao timezone=True; armazenamento em UTC (politica unica).
+#   - Inserts e updates usam Python `default=_utc_now` / `onupdate=_utc_now`,
+#     substituindo os triggers SQL CURRENT_TIMESTAMP que produziam naive UTC.
+#   - DBs migrados de v1.0.0 (timestamps naive em texto) sao reescritos pelo
+#     script `MIGRATION-v1.0.1.py` antes do primeiro boot pos-upgrade.
 # ---------------------------------------------------------------------------
-
-_UPDATED_AT_TRIGGERS = [
-    ("leads", "id"),
-    ("settings", "name"),
-    ("flows", "id"),
-]
-for _table, _pk in _UPDATED_AT_TRIGGERS:
-    event.listen(
-        Base.metadata,
-        "after_create",
-        DDL(
-            f"CREATE TRIGGER IF NOT EXISTS trg_{_table}_updated_at "
-            f"AFTER UPDATE ON {_table} FOR EACH ROW BEGIN "
-            f"UPDATE {_table} SET updated_at = CURRENT_TIMESTAMP "
-            f"WHERE {_pk} = OLD.{_pk}; END;"
-        ),
-    )

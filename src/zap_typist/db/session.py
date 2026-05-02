@@ -6,6 +6,7 @@ Mudancas de schema futuras (v1.x+): scripts Python manuais nomeados
 `MIGRATION-vX.Y.Z.py`, executados pelo proprio Pedro antes da nova versao.
 Rollback: `git checkout vX.Y.Z && python -m zap_typist`.
 """
+
 from __future__ import annotations
 
 import logging
@@ -16,9 +17,10 @@ from typing import TypeVar
 from sqlalchemy import create_engine, event, inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
-from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
-from zap_typist.db.models import APP_DATA_DIR, DB_PATH, Base
+from zap_typist.config.paths import APP_DATA_DIR, DB_PATH
+from zap_typist.db.models import Base
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -41,13 +43,14 @@ def _create_engine() -> Engine:
     )
 
     @event.listens_for(eng, "connect")
-    def _on_connect(dbapi_conn, _record):  # noqa: ANN001
-        cursor = dbapi_conn.cursor()
+    def _on_connect(dbapi_conn: object, _record: object) -> None:
+        cursor = dbapi_conn.cursor()  # type: ignore[attr-defined]
         try:
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA synchronous=NORMAL")
             cursor.execute("PRAGMA foreign_keys=ON")
-            cursor.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+            # PRAGMA nao aceita bindparams; int() garante tipo e neutraliza N-SEC-1.
+            cursor.execute(f"PRAGMA busy_timeout={int(_BUSY_TIMEOUT_MS)}")
         finally:
             cursor.close()
 
@@ -56,14 +59,15 @@ def _create_engine() -> Engine:
 
 engine: Engine = _create_engine()
 
-SessionFactory: scoped_session = scoped_session(
+SessionFactory: scoped_session[Session] = scoped_session(
     sessionmaker(engine, expire_on_commit=False, autoflush=False)
 )
 
 
-def get_session():
+def get_session() -> Session:
     """Retorna a sessao da thread atual (scoped). Caller fecha com .close() ou try/finally."""
-    return SessionFactory()
+    session: Session = SessionFactory()
+    return session
 
 
 def retry_on_locked(

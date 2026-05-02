@@ -1,4 +1,5 @@
 """Testes unitarios da session factory — WAL pragmas, scoped_session, retry_on_locked."""
+
 import threading
 
 import pytest

@@ -17,30 +17,44 @@ ok()   { echo -e "${GREEN}[ok]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 err()  { echo -e "${RED}[erro]${NC} $*" >&2; }
 
+# Detecta o primeiro binario Python >= 3.11 disponivel no PATH.
+# Tenta versoes explicitas antes do generico python3 para evitar
+# falha silenciosa em maquinas onde python3 aponta para 3.10 ou inferior.
+PYTHON_BIN=""
+for _py in python3.13 python3.12 python3.11 python3; do
+  if command -v "$_py" >/dev/null 2>&1; then
+    if "$_py" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+      PYTHON_BIN="$_py"
+      break
+    fi
+  fi
+done
+
 # === Pré-requisitos ===
 check_prereqs() {
   log "Verificando pré-requisitos..."
   local missing=()
 
   command -v git >/dev/null 2>&1 || missing+=("git")
-  command -v python3 >/dev/null 2>&1 || missing+=("python3")
-  command -v pip >/dev/null 2>&1 || missing+=("pip")
+
+  if [ -z "$PYTHON_BIN" ]; then
+    missing+=("python3.11+")
+  fi
 
   if [ ${#missing[@]} -gt 0 ]; then
     err "Faltando: ${missing[*]}"
-    err "Instale os pré-requisitos acima e tente novamente."
+    if [[ " ${missing[*]} " == *" python3.11+ "* ]]; then
+      err "Python 3.11+ e requerido. Instale com:"
+      err "  sudo apt install python3.11        # Ubuntu/Debian"
+      err "  brew install python@3.11           # macOS"
+      err "  sudo dnf install python3.11        # Fedora/RHEL"
+    fi
     exit 1
   fi
 
-  # Verificar Python 3.11+
-  local py_version=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-  log "Python detectado: $py_version"
-
-  if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
-    err "Python 3.11+ é requerido (detectado: $py_version)"
-    exit 1
-  fi
-
+  local py_version
+  py_version=$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+  log "Python detectado: $py_version (usando $PYTHON_BIN)"
   ok "Pré-requisitos verificados"
 }
 
@@ -68,8 +82,8 @@ ensure_venv() {
   if [ -d .venv ]; then
     ok ".venv já existe"
   else
-    log "Criando .venv..."
-    python3 -m venv .venv
+    log "Criando .venv com $PYTHON_BIN..."
+    "$PYTHON_BIN" -m venv .venv
     ok ".venv criado"
   fi
 
@@ -82,17 +96,35 @@ ensure_venv() {
     err "Falha ao ativar virtual environment"
     exit 1
   fi
+
+  # Validar versao do Python dentro da venv recem-ativada.
+  # Necessario quando .venv pre-existente foi criado com Python inferior ao requerido.
+  if ! python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    local venv_ver
+    venv_ver=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    err ".venv existente usa Python $venv_ver (requer 3.11+). Execute:"
+    err "  rm -rf .venv && ./scripts/bootstrap.sh"
+    exit 1
+  fi
 }
 
 # === Dependências ===
 install_deps() {
   log "Instalando dependências Python..."
 
-  # Garantir que pip está atualizado
-  python3 -m pip install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
+  # Verificar que pip esta disponivel na venv ativa
+  if ! python -m pip --version >/dev/null 2>&1; then
+    log "pip ausente na venv — instalando via ensurepip..."
+    python -m ensurepip --upgrade >/dev/null 2>&1 || {
+      err "Nao foi possivel instalar pip. Execute: python -m ensurepip --upgrade"
+      exit 1
+    }
+  fi
+
+  python -m pip install --upgrade pip setuptools wheel >/dev/null 2>&1 || true
 
   if [ -f requirements.txt ]; then
-    pip install -r requirements.txt
+    python -m pip install -r requirements.txt
     ok "Dependências instaladas"
   else
     warn "requirements.txt não encontrado"
@@ -112,8 +144,8 @@ init_database() {
   # Tentar inicializar DB se houver um script
   if [ -f src/db/__init__.py ] || [ -f src/database.py ]; then
     log "Inicializando esquema do banco..."
-    if python3 -c "from src import db; db.init()" 2>/dev/null || \
-       python3 -c "import sqlite3; sqlite3.connect('zap_typist.db')" 2>/dev/null; then
+    if python -c "from src import db; db.init()" 2>/dev/null || \
+       python -c "import sqlite3; sqlite3.connect('zap_typist.db')" 2>/dev/null; then
       ok "Banco de dados OK"
     else
       warn "Não foi possível verificar banco de dados — execute manualmente se necessário"
@@ -142,8 +174,10 @@ check_health() {
     errors=$((errors + 1))
   fi
 
-  # Verificar dependências instaladas
-  if python3 -c "import site; site.getsitepackages()" >/dev/null 2>&1; then
+  # Verificar dependencias instaladas (usa `python` da venv se ativa, senao PYTHON_BIN)
+  local _py_check="${VIRTUAL_ENV:+python}"
+  _py_check="${_py_check:-${PYTHON_BIN:-python3}}"
+  if "$_py_check" -c "import site; site.getsitepackages()" >/dev/null 2>&1; then
     ok "Dependências carregáveis"
   else
     warn "Falha ao carregar dependências"

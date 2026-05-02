@@ -1,8 +1,18 @@
-"""Factories de dados sintéticos para testes (sem PII real)."""
+"""Factories de dados sinteticos para testes (sem PII real).
+
+Dois estilos coexistem aqui:
+  - Builders manuais (make_lead, make_flow, make_setting) — simples, sem deps.
+  - Classes factory-boy (LeadFactory, FlowFactory) em tests.factories.db
+    — uteis quando se quer Faker(pt_BR) ou sequencias automaticas.
+"""
+
 from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+
+from tests.factories.db import FlowFactory, LeadFactory
+from tests.factories.session import StubSessionFactory
 
 from zap_typist.db.models import (
     Flow,
@@ -57,6 +67,14 @@ def make_flow(**overrides) -> Flow:
 
 
 def make_setting(name: str, value: str) -> Setting:
-    return Setting(
-        name=name, value=value, updated_at=datetime.now(UTC)
-    )
+    return Setting(name=name, value=value, updated_at=datetime.now(UTC))
+
+
+__all__ = [
+    "FlowFactory",
+    "LeadFactory",
+    "StubSessionFactory",
+    "make_flow",
+    "make_lead",
+    "make_setting",
+]

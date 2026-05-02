@@ -1,21 +1,29 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import logging.handlers
 import os
+from typing import Any
 
-from zap_typist.db.models import LOG_DIR
+from zap_typist.config.paths import LOG_DIR
 
-PII_FIELDS = {
-    "nome",
-    "numero",
-    "telefone",
-    "numero_e164",
-    "mensagem",
-    "message_content",
-    "texto",
-}
+PII_KEYS = frozenset(
+    {
+        "nome",
+        "numero_e164",
+        "desire",
+        "info_extra",
+        "observacao",
+        "mensagem",
+        "template_render",
+        "desire_adaptado",
+        "ddd",
+        "prefixo",
+        "sufixo",
+    }
+)
 
 _INTERNAL_RECORD_FIELDS = {
     "msg",
@@ -44,15 +52,15 @@ _INTERNAL_RECORD_FIELDS = {
 
 class PIIFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        for field in PII_FIELDS:
+        for field in PII_KEYS:
             if field in record.__dict__:
-                record.__dict__[field] = "***REDACTED***"
+                record.__dict__[field] = "***FILTRADO***"
         return True
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
-        payload: dict = {
+        payload: dict[str, Any] = {
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
@@ -73,10 +81,9 @@ def get_logger(name: str) -> logging.Logger:
     logger.propagate = False
 
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
+        # filesystem sem suporte a chmod (tmpfs em CI) e silenciado
         os.chmod(LOG_DIR, 0o700)
-    except OSError:
-        pass  # filesystem sem suporte a chmod (tmpfs em CI)
 
     fh = logging.handlers.RotatingFileHandler(
         LOG_DIR / "zap-typist.log",

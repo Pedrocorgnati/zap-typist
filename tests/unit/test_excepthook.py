@@ -1,4 +1,5 @@
 """US-016: sys.excepthook captura graceful + tenta QMessageBox em runtime."""
+
 from __future__ import annotations
 
 import sys

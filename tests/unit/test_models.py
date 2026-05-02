@@ -1,4 +1,5 @@
 """Testes unitarios dos modelos SQLAlchemy — tabelas, enums, indices, CHECKs, defaults."""
+
 import pytest
 from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
@@ -63,11 +64,13 @@ def test_lead_status_check_rejects_invalid(in_memory_session):
 
 
 def test_flow_rate_limit_check_rejects_above_30(in_memory_session):
+    import json as _json
+
     f = Flow(
         nome="t",
         chrome_profile="p",
         mode="manual",
-        time_window_days="1,2,3,4,5",
+        time_window_days=_json.dumps(["1", "2", "3", "4", "5"]),
         time_window_start="09:00",
         time_window_end="18:00",
         rate_limit_per_hour=31,
@@ -84,11 +87,13 @@ def test_flow_rate_limit_check_rejects_above_30(in_memory_session):
 
 
 def test_flow_mode_check_rejects_invalid(in_memory_session):
+    import json as _json
+
     f = Flow(
         nome="t",
         chrome_profile="p",
         mode="bogus",
-        time_window_days="1",
+        time_window_days=_json.dumps(["1"]),
         time_window_start="09:00",
         time_window_end="18:00",
         rate_limit_per_hour=10,

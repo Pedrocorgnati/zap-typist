@@ -1,4 +1,5 @@
 """API publica da camada de dados do Zap Typist."""
+
 from zap_typist.db.models import (
     APP_DATA_DIR,
     CACHE_DIR,
@@ -30,10 +31,10 @@ __all__ = [
     "APP_DATA_DIR",
     "CACHE_DIR",
     "CHROME_PROFILES_DIR",
+    "CONTACT_HISTORY_WINDOW_DAYS",
     "DB_PATH",
     "LOCK_FILE",
     "LOG_DIR",
-    "CONTACT_HISTORY_WINDOW_DAYS",
     "ORIGEM_PADRAO_ABA1",
     "RATE_LIMIT_MAX_POR_HORA",
     "Base",
@@ -42,8 +43,8 @@ __all__ = [
     "FlowMode",
     "Lead",
     "LeadStatus",
-    "Setting",
     "SessionFactory",
+    "Setting",
     "engine",
     "get_session",
     "init_db",

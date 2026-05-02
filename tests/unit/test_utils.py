@@ -75,7 +75,7 @@ def test_single_instance_get_existing_pid(tmp_path: Path) -> None:
 
 
 def test_pii_filter_redacts_canonical_fields() -> None:
-    from zap_typist.utils.logger import PII_FIELDS, PIIFilter
+    from zap_typist.utils.logger import PII_KEYS, PIIFilter
 
     f = PIIFilter()
     record = logging.LogRecord(
@@ -87,13 +87,13 @@ def test_pii_filter_redacts_canonical_fields() -> None:
         None,
         None,
     )
-    for field in PII_FIELDS:
+    for field in PII_KEYS:
         record.__dict__[field] = "valor sensivel"
     record.__dict__["safe"] = "ok"
 
     assert f.filter(record) is True
-    for field in PII_FIELDS:
-        assert record.__dict__[field] == "***REDACTED***"
+    for field in PII_KEYS:
+        assert record.__dict__[field] == "***FILTRADO***"
     assert record.__dict__["safe"] == "ok"
 
 

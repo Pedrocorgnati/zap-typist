@@ -1,4 +1,5 @@
 """Testes de error handling do cache utility (US-017)."""
+
 from __future__ import annotations
 
 import logging

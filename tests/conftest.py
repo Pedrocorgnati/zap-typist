@@ -1,4 +1,5 @@
 """Fixtures globais de pytest: DB in-memory, sessão e sessão semeada."""
+
 import pytest
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import scoped_session, sessionmaker
@@ -49,9 +50,7 @@ def db_engine():
 @pytest.fixture(scope="function")
 def db_session(db_engine):
     """Sessao scoped in-memory; rollback automatico ao final do teste."""
-    Session = scoped_session(
-        sessionmaker(bind=db_engine, expire_on_commit=False)
-    )
+    Session = scoped_session(sessionmaker(bind=db_engine, expire_on_commit=False))
     session = Session()
     yield session
     session.rollback()
@@ -61,15 +60,9 @@ def db_session(db_engine):
 @pytest.fixture(scope="function")
 def seeded_session(db_session, monkeypatch):
     """Sessao in-memory pre-populada com os defaults canonicos do seed."""
+    from tests.factories.session import StubSessionFactory
 
-    class _StubFactory:
-        def __call__(self):
-            return db_session
-
-        def remove(self):
-            return None
-
-    monkeypatch.setattr("zap_typist.db.seed.SessionFactory", _StubFactory())
+    monkeypatch.setattr("zap_typist.db.seed.SessionFactory", StubSessionFactory(db_session))
     from zap_typist.db.seed import run_seed
 
     run_seed(force=True)

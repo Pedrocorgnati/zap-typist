@@ -3,23 +3,24 @@
 US-017: arquivo criado com modo 0600 dentro de CACHE_DIR/0700; falhas de I/O
 em write_text NAO propagam — caller continua sem cache (degradacao graciosa).
 """
+
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from pathlib import Path
 
-from zap_typist.db.models import CACHE_DIR
+from zap_typist.config.paths import CACHE_DIR
 
 logger = logging.getLogger(__name__)
 
 
 def ensure_cache_dir() -> Path:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    try:
+    with contextlib.suppress(OSError):
+        # filesystem sem suporte a chmod (tmpfs em CI) e silenciado
         os.chmod(CACHE_DIR, 0o700)
-    except OSError:
-        pass  # filesystem sem suporte a chmod (tmpfs em CI)
     return CACHE_DIR
 
 
@@ -60,8 +61,7 @@ def write_text(filename: str, content: str) -> Path | None:
             },
         )
         return None
-    try:
+    with contextlib.suppress(OSError):
+        # filesystem sem suporte a chmod (tmpfs em CI) e silenciado
         os.chmod(path, 0o600)
-    except OSError:
-        pass  # filesystem sem suporte a chmod (tmpfs em CI)
     return path
