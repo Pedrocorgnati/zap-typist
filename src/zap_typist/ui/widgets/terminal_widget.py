@@ -81,6 +81,16 @@ class TerminalWidget(QTextEdit):
         """Retorna todo o conteúdo atual como string (helper para testes/export)."""
         return self.toPlainText()
 
+    def line_count(self) -> int:
+        """Número de linhas (blocos) no documento.
+
+        Equivale a ``document().blockCount()``. Qt mantém um bloco vazio
+        terminal, portanto após N chamadas de :meth:`append_line` o valor
+        pode ser ``N + 1``. Após rotação de buffer estabiliza em
+        ``TRIM_TO_LINES + 1``.
+        """
+        return self.document().blockCount()
+
     # ---------------------------------------------------------------
     # Internos
     # ---------------------------------------------------------------

@@ -71,9 +71,9 @@ def test_buffer_rotation_ao_atingir_limite(qtbot):
     # Inserção direta via _do_append (síncrona, evita esperar event loop 10k vezes)
     for i in range(MAX_LINES + 100):
         widget._do_append(f"L{i}")
-    block_count = widget.document().blockCount()
+    line_count = widget.line_count()
     # Qt mantém um bloco vazio terminal — daí o + 1
-    assert block_count <= TRIM_TO_LINES + 1, f"blockCount={block_count}"
+    assert line_count <= TRIM_TO_LINES + 1, f"line_count={line_count}"
     # As linhas mais antigas foram descartadas
     text = widget.export_text()
     assert "L0" not in text
@@ -144,3 +144,17 @@ def test_clear_esvazia_buffer(qtbot):
     qtbot.wait(50)
     widget.clear()
     assert widget.export_text() == ""
+
+
+def test_line_count_reflete_appends(qtbot):
+    """[CONTRACT C1] line_count() expõe a contagem sem acoplar ao QTextDocument."""
+    widget = TerminalWidget()
+    qtbot.addWidget(widget)
+    assert widget.line_count() == 1  # bloco vazio inicial do Qt
+    for i in range(5):
+        widget.append_line(f"linha {i}")
+    qtbot.wait(50)
+    # Primeiro append preenche o bloco vazio inicial; demais criam novos blocos.
+    assert widget.line_count() == 5
+    widget.clear()
+    assert widget.line_count() == 1
