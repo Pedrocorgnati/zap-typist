@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # bootstrap.sh — Setup completo do ambiente local para zap-typist
 # Gerado por /dev-bootstrap-create (SystemForge)
-# Uso: ./scripts/bootstrap.sh [--reset]
+# Uso: ./scripts/bootstrap.sh [--reset] [--health]
 
 set -euo pipefail
 
@@ -17,9 +17,9 @@ ok()   { echo -e "${GREEN}[ok]${NC} $*"; }
 warn() { echo -e "${YELLOW}[warn]${NC} $*"; }
 err()  { echo -e "${RED}[erro]${NC} $*" >&2; }
 
-# Detecta o primeiro binario Python >= 3.11 disponivel no PATH.
-# Tenta versoes explicitas antes do generico python3 para evitar
-# falha silenciosa em maquinas onde python3 aponta para 3.10 ou inferior.
+# Detecta o primeiro binário Python >= 3.11 disponível no PATH.
+# Tenta versões explícitas antes do genérico python3 para evitar
+# falha silenciosa em máquinas onde python3 aponta para 3.10 ou inferior.
 PYTHON_BIN=""
 for _py in python3.13 python3.12 python3.11 python3; do
   if command -v "$_py" >/dev/null 2>&1; then
@@ -29,6 +29,9 @@ for _py in python3.13 python3.12 python3.11 python3; do
     fi
   fi
 done
+
+APP_DATA_DIR="${HOME}/.local/share/zap-typist"
+DB_PATH="${APP_DATA_DIR}/zap_typist.db"
 
 # === Pré-requisitos ===
 check_prereqs() {
@@ -44,7 +47,7 @@ check_prereqs() {
   if [ ${#missing[@]} -gt 0 ]; then
     err "Faltando: ${missing[*]}"
     if [[ " ${missing[*]} " == *" python3.11+ "* ]]; then
-      err "Python 3.11+ e requerido. Instale com:"
+      err "Python 3.11+ é requerido. Instale com:"
       err "  sudo apt install python3.11        # Ubuntu/Debian"
       err "  brew install python@3.11           # macOS"
       err "  sudo dnf install python3.11        # Fedora/RHEL"
@@ -97,8 +100,8 @@ ensure_venv() {
     exit 1
   fi
 
-  # Validar versao do Python dentro da venv recem-ativada.
-  # Necessario quando .venv pre-existente foi criado com Python inferior ao requerido.
+  # Validar versão do Python dentro da venv recém-ativada.
+  # Necessário quando .venv pré-existente foi criado com Python inferior ao requerido.
   if ! python -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
     local venv_ver
     venv_ver=$(python -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -112,11 +115,11 @@ ensure_venv() {
 install_deps() {
   log "Instalando dependências Python..."
 
-  # Verificar que pip esta disponivel na venv ativa
+  # Verificar que pip está disponível na venv ativa
   if ! python -m pip --version >/dev/null 2>&1; then
     log "pip ausente na venv — instalando via ensurepip..."
     python -m ensurepip --upgrade >/dev/null 2>&1 || {
-      err "Nao foi possivel instalar pip. Execute: python -m ensurepip --upgrade"
+      err "Não foi possível instalar pip. Execute: python -m ensurepip --upgrade"
       exit 1
     }
   fi
@@ -135,20 +138,33 @@ install_deps() {
 init_database() {
   log "Verificando banco de dados..."
 
-  # Para SQLite, apenas garantir que a pasta de dados existe
-  local db_dir="."
-  if mkdir -p "$db_dir" 2>/dev/null; then
-    ok "Diretório de dados OK"
+  # Criar diretório de dados se não existir
+  if mkdir -p "$APP_DATA_DIR" 2>/dev/null; then
+    ok "Diretório de dados ($APP_DATA_DIR) OK"
+  else
+    warn "Não foi possível criar diretório de dados"
+    return
   fi
 
-  # Tentar inicializar DB se houver um script
-  if [ -f src/db/__init__.py ] || [ -f src/database.py ]; then
+  # Tentar inicializar DB se houver um módulo de banco
+  if [ -f src/zap_typist/db/__init__.py ] || [ -f src/zap_typist/database.py ]; then
     log "Inicializando esquema do banco..."
-    if python -c "from src import db; db.init()" 2>/dev/null || \
-       python -c "import sqlite3; sqlite3.connect('zap_typist.db')" 2>/dev/null; then
-      ok "Banco de dados OK"
+    if python -c "from zap_typist import db; db.init()" 2>/dev/null; then
+      ok "Banco de dados inicializado"
     else
-      warn "Não foi possível verificar banco de dados — execute manualmente se necessário"
+      # Fallback: apenas criar conexão SQLite (cria o arquivo se não existir)
+      if python -c "import sqlite3; sqlite3.connect('${DB_PATH}')" 2>/dev/null; then
+        ok "Banco de dados (SQLite) pronto em ${DB_PATH}"
+      else
+        warn "Não foi possível inicializar banco de dados — execute manualmente se necessário"
+      fi
+    fi
+  else
+    # Criar arquivo SQLite vazio
+    if python -c "import sqlite3; sqlite3.connect('${DB_PATH}')" 2>/dev/null; then
+      ok "Banco de dados (SQLite) pronto em ${DB_PATH}"
+    else
+      warn "Não foi possível criar arquivo SQLite"
     fi
   fi
 }
@@ -174,7 +190,7 @@ check_health() {
     errors=$((errors + 1))
   fi
 
-  # Verificar dependencias instaladas (usa `python` da venv se ativa, senao PYTHON_BIN)
+  # Verificar dependências instaladas (usa `python` da venv se ativa, senão PYTHON_BIN)
   local _py_check="${VIRTUAL_ENV:+python}"
   _py_check="${_py_check:-${PYTHON_BIN:-python3}}"
   if "$_py_check" -c "import site; site.getsitepackages()" >/dev/null 2>&1; then
@@ -185,10 +201,18 @@ check_health() {
   fi
 
   # Verificar banco de dados
-  if [ -f zap_typist.db ] || [ -f .env ]; then
-    ok "Banco de dados configurado"
+  if [ -f "$DB_PATH" ] || [ -f .env ]; then
+    ok "Banco de dados (SQLite) configurado"
   else
-    warn "Banco de dados não detectado"
+    warn "Banco de dados não detectado (será criado na primeira execução)"
+  fi
+
+  # Verificar que src/zap_typist é importável
+  if python -c "import zap_typist" 2>/dev/null; then
+    ok "Módulo zap_typist importável"
+  else
+    warn "Módulo zap_typist não importável — verifique instalação de dependências"
+    errors=$((errors + 1))
   fi
 
   if [ $errors -eq 0 ]; then
@@ -207,14 +231,23 @@ show_summary() {
   echo ""
   echo "  Para iniciar a aplicação:"
   echo "    source .venv/bin/activate"
-  echo "    python -m zap_typist.cli"
+  echo "    python -m zap_typist"
+  echo ""
+  echo "  Ou via Makefile:"
+  echo "    make dev"
   echo ""
   echo "  Para rodar testes:"
   echo "    source .venv/bin/activate"
-  echo "    pytest"
+  echo "    pytest -v"
+  echo ""
+  echo "  Ou via Makefile:"
+  echo "    make test"
   echo ""
   echo "  Para resetar tudo:"
   echo "    ./scripts/bootstrap.sh --reset"
+  echo ""
+  echo "  Banco de dados SQLite:"
+  echo "    ${DB_PATH}"
   echo ""
 }
 
@@ -230,7 +263,15 @@ do_reset() {
   # Limpar cache
   rm -rf .venv __pycache__ .mypy_cache .pytest_cache .ruff_cache .coverage 2>/dev/null || true
   rm -rf src/__pycache__ tests/__pycache__ 2>/dev/null || true
-  rm -f .env zap_typist.db 2>/dev/null || true
+  rm -f .env 2>/dev/null || true
+
+  # Limpar arquivo .venv-checksum se existir
+  rm -f .venv-checksum 2>/dev/null || true
+
+  # Avisar sobre banco de dados
+  if [ -f "$DB_PATH" ]; then
+    warn "Banco de dados em ${DB_PATH} não foi removido — delete manualmente se necessário"
+  fi
 
   ok "Ambiente limpo"
   do_setup
