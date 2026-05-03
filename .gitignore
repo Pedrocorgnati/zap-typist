@@ -24,6 +24,22 @@ build/
 .coverage
 .coverage.*
 
+# Secrets and credentials
+*.key
+*.pem
+*.crt
+*_rsa
+*_ecdsa
+*_ed25519
+credentials.json
+service-account*.json
+*.keystore
+*.jks
+*.p12
+*.pfx
+test-users.json
+test-users.md
+
 # OS
 .DS_Store
 Thumbs.db

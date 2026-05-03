@@ -49,6 +49,7 @@ dev = [
   "mypy>=1.10",
   "factory-boy>=3.3",
   "deptry>=0.20",
+  "hypothesis>=6.0",
 ]
 
 [tool.setuptools.packages.find]

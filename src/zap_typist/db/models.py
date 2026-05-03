@@ -12,7 +12,7 @@ Risco aceito e documentado em PRD.md (NFR Seguranca) e THREAT-MODEL.md.
 from __future__ import annotations
 
 import enum
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import (
@@ -47,7 +47,7 @@ from zap_typist.domain.constants import RATE_LIMIT_MAX_POR_HORA as RATE_LIMIT_MA
 
 def _utc_now() -> datetime:
     """Helper para defaults Python tz-aware. UTC e politica do projeto."""
-    return datetime.now(UTC)
+    return datetime.now(timezone.utc)
 
 
 class UTCDateTime(TypeDecorator[datetime]):
@@ -68,14 +68,14 @@ class UTCDateTime(TypeDecorator[datetime]):
         if value.tzinfo is None:
             # Aceita naive como UTC (tolerante para defaults SQL legacy).
             return value
-        return value.astimezone(UTC).replace(tzinfo=None)
+        return value.astimezone(timezone.utc).replace(tzinfo=None)
 
     def process_result_value(self, value: datetime | None, dialect: Any) -> datetime | None:
         if value is None:
             return None
         if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value.astimezone(UTC)
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
 
 class Base(DeclarativeBase):
@@ -87,7 +87,7 @@ class Base(DeclarativeBase):
 # ---------------------------------------------------------------------------
 
 
-class LeadStatus(enum.StrEnum):
+class LeadStatus(str, enum.Enum):
     """Estado do ciclo de vida de um lead (10 valores canonicos)."""
 
     pendente = "pendente"
@@ -102,7 +102,7 @@ class LeadStatus(enum.StrEnum):
     invalido = "invalido"
 
 
-class FlowMode(enum.StrEnum):
+class FlowMode(str, enum.Enum):
     """Modo de operacao de um fluxo de envio (2 valores canonicos)."""
 
     manual = "manual"
