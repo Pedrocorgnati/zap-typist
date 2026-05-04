@@ -18,32 +18,39 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from zap_typist.db.session import SessionFactory
+from zap_typist.ui.tab1_gerar_queries import get_aba1_widget
 from zap_typist.utils.logger import get_logger
 
 logger = get_logger("zap_typist.ui.main_window")
 
+_PLACEHOLDER_TABS: tuple[tuple[str, str], ...] = (
+    ("Gerar Contatos", "Em desenvolvimento — aguardando rock 2 (aba2-contatos)"),
+    ("Enviar Mensagens", "Em desenvolvimento — aguardando rock 3 (aba3-envio)"),
+    ("Configurações", "Em desenvolvimento — aguardando rock 4 (aba4-config)"),
+)
+
 
 class MainWindow(QMainWindow):
-    TAB_LABELS: tuple[tuple[str, str], ...] = (
-        ("Gerar Queries", "Em desenvolvimento — aguardando rock 1 (aba1-queries)"),
-        ("Gerar Contatos", "Em desenvolvimento — aguardando rock 2 (aba2-contatos)"),
-        ("Enviar Mensagens", "Em desenvolvimento — aguardando rock 3 (aba3-envio)"),
-        ("Configurações", "Em desenvolvimento — aguardando rock 4 (aba4-config)"),
-    )
-
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("Zap Typist")
         self.setMinimumSize(1280, 800)
 
         self.tabs = QTabWidget(self)
-        for label, placeholder in self.TAB_LABELS:
+
+        # Aba 1 — funcional (module-3-aba1-queries)
+        self.tabs.addTab(get_aba1_widget(SessionFactory), "Gerar Queries")
+
+        # Abas 2/3/4 — placeholders
+        for label, placeholder in _PLACEHOLDER_TABS:
             container = QWidget()
             layout = QVBoxLayout(container)
             lbl = QLabel(placeholder)
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(lbl)
             self.tabs.addTab(container, label)
+
         self.setCentralWidget(self.tabs)
 
         self.status = QStatusBar(self)
