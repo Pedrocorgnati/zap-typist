@@ -8,10 +8,13 @@ docs/zap-typist/project/adrs/ADR-002-pid-lock-cooperativo-linux-only.md).
 from __future__ import annotations
 
 import contextlib
+import logging
 import os
 from pathlib import Path
 
 from zap_typist.config.paths import LOCK_FILE
+
+logger = logging.getLogger(__name__)
 
 
 class SingleInstanceLock:
@@ -25,6 +28,7 @@ class SingleInstanceLock:
                 pid = int(self.lock_file.read_text().strip())
                 if self._is_pid_alive(pid):
                     return False
+                logger.warning("single_instance_orphan_detected", extra={"orphan_pid": pid})
             except (ValueError, OSError):
                 pass  # lock corrompido → sobrescrever
         self.lock_file.parent.mkdir(parents=True, exist_ok=True)

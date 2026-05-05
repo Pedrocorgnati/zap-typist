@@ -18,6 +18,7 @@ from zap_typist.db.models import Lead, LeadStatus
 from zap_typist.engine.query_generator_worker import QueryGeneratorWorker
 from zap_typist.ui.aba1.lead_card_list import LeadCardList
 from zap_typist.ui.aba1.lead_form import LeadFormWidget
+from zap_typist.ui.styles import COLOR_CMD_BTN, COLOR_CMD_BTN_TEXT
 from zap_typist.ui.widgets.form_validators import LeadStatusGuard
 from zap_typist.ui.widgets.terminal_widget import TerminalWidget
 from zap_typist.utils.e164 import format_e164
@@ -51,7 +52,11 @@ class _TerminalPanel(QGroupBox):
         self.terminal.setFixedHeight(TERMINAL_FIXED_HEIGHT)
         layout.addWidget(self.terminal)
         self._btn = QPushButton("/imbound:query")
-        self._btn.setStyleSheet("font-family: monospace; font-weight: bold;")
+        self._btn.setStyleSheet(
+            f"font-family: monospace; font-weight: bold; "
+            f"background-color: {COLOR_CMD_BTN}; color: {COLOR_CMD_BTN_TEXT}; "
+            f"padding: 4px 12px; border-radius: 4px;"
+        )
         self._btn.setAccessibleName(
             "Disparar geração de queries Google para leads pendentes"
         )
@@ -107,6 +112,7 @@ class Tab1GerarQueriesWidget(QWidget):
         self._terminal_panel.imbound_query_clicked.connect(self._on_imbound_query_clicked)
         self._lead_card_list.submit_requested.connect(self._on_card_submit)
         self._lead_card_list.discard_requested.connect(self._on_card_discard)
+        self._lead_card_list.page_change_requested.connect(self._on_page_change_requested)
 
     # ------------------------------------------------------------------
     # Handlers de form e worker
@@ -222,13 +228,20 @@ class Tab1GerarQueriesWidget(QWidget):
             lead.status = LeadStatus.telefone_preenchido.value
             try:
                 session.commit()
-            except SQLAlchemyError:
+            except SQLAlchemyError as exc:
                 session.rollback()
                 logger.error(
                     "aba1_submit_commit_failed", exc_info=True, extra={"lead_id": lead_id}
                 )
-                refresh_needed = True
-                QMessageBox.critical(self, "Erro ao salvar", "Falha ao persistir — consulte logs.")
+                card = self._lead_card_list.find_card_by_id(lead_id)
+                if card is not None:
+                    card.unlock_after_failure("Falha ao salvar — tente novamente.")
+                    card.submit_failed.emit(lead_id, str(exc))
+                else:
+                    refresh_needed = True
+                    QMessageBox.critical(
+                        self, "Erro ao salvar", "Falha ao persistir — consulte logs."
+                    )
                 return
             logger.info("aba1_submit_succeeded", extra={"lead_id": lead_id})
             self._lead_card_list.refresh(session)
@@ -307,6 +320,13 @@ class Tab1GerarQueriesWidget(QWidget):
                     logger.exception(
                         "aba1_discard_sad_path_refresh_failed", extra={"lead_id": lead_id}
                     )
+            self._session_factory.remove()
+
+    def _on_page_change_requested(self) -> None:
+        session = self._session_factory()
+        try:
+            self._lead_card_list.refresh_current_page(session)
+        finally:
             self._session_factory.remove()
 
     # ------------------------------------------------------------------

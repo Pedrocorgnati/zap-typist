@@ -8,9 +8,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from zap_typist.db.models import Base, Lead, LeadStatus, Setting
+from zap_typist.domain.constants import ORIGEM_PADRAO_ABA1
 from zap_typist.services.lead_service import (
     DEFAULT_ORIGIN_KEY,
-    FALLBACK_ORIGIN,
     create_lead,
 )
 
@@ -68,7 +68,7 @@ def test_missing_setting_falls_back(Factory):
             s, desire="", nome="A", ddd="11", prefixo="1111", info_extra=""
         )
     with Factory() as s:
-        assert s.query(Lead).filter_by(id=lead.id).one().origem == FALLBACK_ORIGIN
+        assert s.query(Lead).filter_by(id=lead.id).one().origem == ORIGEM_PADRAO_ABA1
 
 
 def test_logs_no_pii(Factory):

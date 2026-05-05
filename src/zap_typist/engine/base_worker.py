@@ -13,10 +13,11 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import time
 from abc import abstractmethod
-from typing import Any
 
 from PySide6.QtCore import QObject, Signal
+from sqlalchemy.orm import Session, scoped_session
 
 logger = logging.getLogger(__name__)
 
@@ -52,14 +53,18 @@ class BaseWorker(QObject):
         worker = MeuWorker(session_factory=SessionFactory)
     """
 
-    def __init__(self, session_factory: Any, parent: QObject | None = None) -> None:
+    def __init__(
+        self,
+        session_factory: scoped_session[Session],
+        parent: QObject | None = None,
+    ) -> None:
         super().__init__(parent)
-        self._session_factory = session_factory
+        self._session_factory: scoped_session[Session] = session_factory
         self.signals = WorkerSignals()
         self.cancel_requested: bool = False
-        self._session: Any = None
+        self._session: Session | None = None
 
-    def get_session(self) -> Any:
+    def get_session(self) -> Session:
         """Cria (ou retorna) sessao scoped para a thread atual."""
         self._session = self._session_factory()
         return self._session
@@ -79,13 +84,26 @@ class BaseWorker(QObject):
 
     def execute(self) -> None:
         """Envelopa run() com try/except/finally para cleanup garantido."""
+        _start = time.monotonic()
         try:
             self.run()
+            logger.info(
+                "worker_completed",
+                extra={
+                    "worker": type(self).__name__,
+                    "duration_ms": int((time.monotonic() - _start) * 1000),
+                },
+            )
         except Exception as exc:
             logger.exception(
-                "worker_error",
-                extra={"worker": type(self).__name__, "error": str(exc)},
+                "worker_failed",
+                extra={
+                    "worker": type(self).__name__,
+                    "duration_ms": int((time.monotonic() - _start) * 1000),
+                    "error": str(exc),
+                },
             )
+            self.signals.log_line.emit(f"Erro: {type(exc).__name__}.")
             self.signals.error.emit(str(exc))
         finally:
             if self._session is not None:

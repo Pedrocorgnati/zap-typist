@@ -323,3 +323,26 @@ def test_build_dork_lines_format(lead_full: Lead) -> None:
     assert len(lines) == 2
     assert lines[0] == '"Igor" ("21 97951" OR "(21) 97951")'
     assert lines[1] == '"padeiro" ("21 97951" OR "(21) 97951")'
+
+
+def test_card_unlocks_after_parent_failure(
+    qapp: QApplication, qtbot: object, lead_full: Lead
+) -> None:
+    """ST002 — card deve reabilitar inputs e emitir submit_failed após falha de commit."""
+    card = LeadCardWidget(lead_full)
+    qtbot.addWidget(card)  # type: ignore[attr-defined]
+
+    # Simular submit (trava os inputs)
+    card._sufixo_input.setText("1234")
+    qtbot.mouseClick(card._submit_btn, Qt.MouseButton.LeftButton)  # type: ignore[attr-defined]
+    assert not card._sufixo_input.isEnabled(), "inputs devem estar travados pós-submit"
+
+    failure_args: list[object] = []
+    card.submit_failed.connect(lambda lead_id, msg: failure_args.append((lead_id, msg)))
+
+    # Simular falha de commit no parent chamando unlock_after_failure
+    card.unlock_after_failure("Falha ao salvar — tente novamente.")
+
+    assert card._sufixo_input.isEnabled(), "sufixo_input deve estar habilitado após falha"
+    assert card._submit_btn.isEnabled(), "submit_btn deve estar habilitado após falha"
+    assert card._discard_btn.isEnabled(), "discard_btn deve estar habilitado após falha"

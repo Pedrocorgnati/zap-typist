@@ -147,16 +147,16 @@ class LeadFormWidget(QGroupBox):
             return
 
         self.btn_submit.setEnabled(False)
+        session = self._session_factory()
         try:
-            with self._session_factory() as session:
-                create_lead(
-                    session,
-                    desire=self.input_desire.text(),
-                    nome=self.input_nome.text(),
-                    ddd=self.input_ddd.text(),
-                    prefixo=self.input_prefixo.text(),
-                    info_extra=self.input_info.text(),
-                )
+            create_lead(
+                session,
+                desire=self.input_desire.text(),
+                nome=self.input_nome.text(),
+                ddd=self.input_ddd.text(),
+                prefixo=self.input_prefixo.text(),
+                info_extra=self.input_info.text(),
+            )
         except Exception:
             logger.exception("lead_add_failed")
             QMessageBox.critical(
@@ -166,6 +166,8 @@ class LeadFormWidget(QGroupBox):
             )
             return
         finally:
+            if hasattr(self._session_factory, "remove"):
+                self._session_factory.remove()
             self.btn_submit.setEnabled(True)
 
         self._reset_form()

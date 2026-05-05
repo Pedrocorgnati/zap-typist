@@ -8,6 +8,7 @@ import os
 from typing import Any
 
 from zap_typist.config.paths import LOG_DIR
+from zap_typist.config.settings import settings
 
 PII_KEYS = frozenset(
     {
@@ -95,7 +96,7 @@ def get_logger(name: str) -> logging.Logger:
     fh.addFilter(PIIFilter())
     logger.addHandler(fh)
 
-    if os.environ.get("DEBUG"):
+    if settings.debug:
         sh = logging.StreamHandler()
         sh.setFormatter(JsonFormatter())
         sh.addFilter(PIIFilter())

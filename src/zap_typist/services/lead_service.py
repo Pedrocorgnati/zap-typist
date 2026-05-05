@@ -4,12 +4,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from zap_typist.db.models import Lead, LeadStatus, Setting
+from zap_typist.domain.constants import ORIGEM_PADRAO_ABA1
 from zap_typist.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 DEFAULT_ORIGIN_KEY = "default_aba1_origin"
-FALLBACK_ORIGIN = "getNinjas"
 
 
 def _read_default_origin(session: Session) -> str:
@@ -18,9 +18,9 @@ def _read_default_origin(session: Session) -> str:
     if setting is None or not setting.value:
         logger.warning(
             "default_origin_missing",
-            extra={"key": DEFAULT_ORIGIN_KEY, "fallback": FALLBACK_ORIGIN},
+            extra={"key": DEFAULT_ORIGIN_KEY, "fallback": ORIGEM_PADRAO_ABA1},
         )
-        return FALLBACK_ORIGIN
+        return ORIGEM_PADRAO_ABA1
     return setting.value
 
 

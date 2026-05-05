@@ -96,18 +96,19 @@ def test_worker_cancel_before_run_emits_cancelled(qtbot, Factory):
 def test_worker_isolates_exceptions(qtbot, Factory):
     worker = QueryGeneratorWorker(session_factory=Factory)
     msgs: list[str] = []
-    statuses: list[str] = []
+    errors: list[str] = []
     worker.signals.log_line.connect(msgs.append)
-    worker.signals.status_update.connect(statuses.append)
+    worker.signals.error.connect(errors.append)
     with patch(
         "zap_typist.engine.query_generator_worker.generate_queries",
         side_effect=RuntimeError("boom"),
     ):
         with qtbot.waitSignal(worker.signals.finished, timeout=3000):
             worker.execute()
+    # BaseWorker.execute() emite log_line("Erro: ...") + signals.error
     assert any("Erro" in m for m in msgs)
-    assert any("Erro na geração" in s for s in statuses)
-    # Mensagem não vaza detalhes do exception
+    assert len(errors) == 1
+    # Mensagem não vaza detalhes do exception via log_line
     for m in msgs:
         assert "boom" not in m
 

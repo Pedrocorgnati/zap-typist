@@ -81,7 +81,7 @@ def _boot_os() -> int | None:
         )
         _show_blocking_modal(
             "Permissao negada",
-            f"Nao foi possivel criar o diretorio de dados:\n{APP_DATA_DIR}\n\n"
+            f"Não foi possível criar o diretório de dados:\n{APP_DATA_DIR}\n\n"
             "Ajuste as permissoes (chmod u+w) e tente novamente.",
             level="critical",
         )
@@ -91,7 +91,7 @@ def _boot_os() -> int | None:
             logger.critical("xdg_disk_full", extra={"path": str(APP_DATA_DIR)})
             _show_blocking_modal(
                 "Disco cheio",
-                "Disco cheio - nao foi possivel criar o diretorio de dados. "
+                "Disco cheio - não foi possível criar o diretório de dados. "
                 "Libere espaco em disco e tente novamente.",
                 level="critical",
             )
@@ -102,7 +102,7 @@ def _boot_os() -> int | None:
             )
             _show_blocking_modal(
                 "Erro de I/O",
-                f"Erro ao acessar diretorio de dados:\n{APP_DATA_DIR}\n\nDetalhe: {exc}",
+                f"Erro ao acessar diretório de dados:\n{APP_DATA_DIR}\n\nDetalhe: {exc}",
                 level="critical",
             )
         return EXIT_OS_ERROR
@@ -110,7 +110,7 @@ def _boot_os() -> int | None:
     if _is_wayland():
         logger.warning("wayland_detected")
         _show_blocking_modal(
-            "Sessao Wayland detectada",
+            "Sessão Wayland detectada",
             "Zap Typist requer X11 para reparenting do Chrome.\n"
             "A Aba 3 ficara inoperante. Faca logout e selecione "
             "'Ubuntu on Xorg' no login para usar todas as funcionalidades.",
@@ -136,7 +136,7 @@ def _boot_db() -> int | None:
         logger.critical("db_permission_denied", extra={"error": str(exc)})
         _show_blocking_modal(
             "Permissao negada",
-            f"Nao foi possivel criar o banco de dados.\n\nDetalhe: {exc}",
+            f"Não foi possível criar o banco de dados.\n\nDetalhe: {exc}",
             level="critical",
         )
         return EXIT_OS_ERROR
@@ -145,7 +145,7 @@ def _boot_db() -> int | None:
             logger.critical("db_disk_full")
             _show_blocking_modal(
                 "Disco cheio",
-                "Disco cheio - nao foi possivel criar o banco de dados. "
+                "Disco cheio - não foi possível criar o banco de dados. "
                 "Libere espaco em disco e tente novamente.",
                 level="critical",
             )
@@ -158,6 +158,7 @@ def _boot_db() -> int | None:
             )
         return EXIT_OS_ERROR
 
+    _db_validate_start = time.monotonic()
     try:
         validate_schema()
     except RuntimeError as exc:
@@ -167,10 +168,14 @@ def _boot_db() -> int | None:
             "O banco de dados parece corrompido (faltam tabelas esperadas).\n\n"
             f"Detalhe: {exc}\n\n"
             "Ultima saida: feche o app e mova ~/.local/share/zap-typist/zap_typist.db "
-            "para um backup; o app vai recriar o banco no proximo boot.",
+            "para um backup; o app vai recriar o banco no próximo boot.",
             level="critical",
         )
         return EXIT_SCHEMA_ERROR
+    logger.info(
+        "db_validated",
+        extra={"duration_ms": int((time.monotonic() - _db_validate_start) * 1000)},
+    )
 
     run_seed(defaults=build_settings_defaults(), force=False)
     return None
@@ -202,10 +207,10 @@ def main() -> int:
     lock = SingleInstanceLock()
     if not lock.acquire():
         existing_pid = lock.get_existing_pid()
-        logger.warning("single_instance_blocked", extra={"existing_pid": existing_pid})
+        logger.warning("single_instance_lock_blocked", extra={"existing_pid": existing_pid})
         _show_blocking_modal(
-            "Zap Typist ja esta rodando",
-            f"Outra instancia esta ativa (PID: {existing_pid}).\nFeche-a antes de abrir uma nova.",
+            "Zap Typist já está rodando",
+            f"Outra instância está ativa (PID: {existing_pid}).\nFeche-a antes de abrir uma nova.",
             level="critical",
         )
         return EXIT_LOCK

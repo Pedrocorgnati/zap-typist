@@ -39,6 +39,7 @@ class LeadCardWidget(QWidget):
 
     submit_requested: Signal = Signal(int, str)
     discard_requested: Signal = Signal(int)
+    submit_failed: Signal = Signal(int, str)
 
     def __init__(self, lead: Lead, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -140,6 +141,31 @@ class LeadCardWidget(QWidget):
         self._sufixo_input.setEnabled(False)
         self._submit_btn.setEnabled(False)
         self._discard_btn.setEnabled(False)
+
+    def unlock_after_failure(self, message: str) -> None:
+        """Reabilita inputs do card após falha de commit no parent."""
+        self._sufixo_input.setEnabled(True)
+        self._submit_btn.setEnabled(True)
+        self._discard_btn.setEnabled(True)
+        logger.warning("card_unlocked_after_failure", extra={"lead_id": self._lead.id})
+        self._show_failure_feedback(message)
+
+    def _show_failure_feedback(self, message: str) -> None:
+        if self._copied_timer is not None and self._copied_timer.isActive():
+            self._copied_timer.stop()
+            if self._copied_label is not None:
+                self._copied_label.deleteLater()
+                self._copied_label = None
+
+        self._copied_label = QLabel(f"Erro: {message}")
+        self._copied_label.setStyleSheet("color: #F6465D; font-weight: bold;")
+        if self._footer_layout is not None:
+            self._footer_layout.insertWidget(1, self._copied_label)
+
+        self._copied_timer = QTimer(self)
+        self._copied_timer.setSingleShot(True)
+        self._copied_timer.timeout.connect(self._clear_copied_feedback)
+        self._copied_timer.start(COPIED_FEEDBACK_MS)
 
     def _on_submit_clicked(self) -> None:
         sufixo = self._sufixo_input.text().strip()

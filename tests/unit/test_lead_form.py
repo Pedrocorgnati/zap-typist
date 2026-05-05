@@ -123,3 +123,30 @@ def test_enter_in_field_triggers_submit(qtbot, widget):
 
     with qtbot.waitSignal(widget.lead_added, timeout=2000):
         qtbot.keyClick(widget.input_prefixo, Qt.Key.Key_Return)
+
+
+def test_session_factory_remove_called_after_submit(qtbot, tmp_path):
+    """scoped_session.remove() deve ser chamado no finally do _on_submit (ADR-ScopedSession)."""
+    from unittest.mock import MagicMock
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'remove_test.db'}", future=True)
+    Base.metadata.create_all(engine)
+    RealFactory = sessionmaker(bind=engine, expire_on_commit=False, future=True)
+    with RealFactory() as s:
+        s.add(Setting(name="default_aba1_origin", value="getNinjas"))
+        s.commit()
+
+    factory_mock = MagicMock()
+    factory_mock.side_effect = RealFactory
+    factory_mock.remove = MagicMock()
+
+    w = LeadFormWidget(session_factory=factory_mock)
+    qtbot.addWidget(w)
+    w.input_nome.setText("Ana")
+    w.input_ddd.setText("11")
+    w.input_prefixo.setText("9999")
+
+    with qtbot.waitSignal(w.lead_added, timeout=2000):
+        qtbot.mouseClick(w.btn_submit, Qt.MouseButton.LeftButton)
+
+    factory_mock.remove.assert_called_once()

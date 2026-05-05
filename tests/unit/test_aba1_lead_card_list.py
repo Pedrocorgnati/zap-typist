@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 import pytest
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication, QLabel
 from sqlalchemy import create_engine
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +15,13 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from zap_typist.db.models import Base, Lead, LeadStatus
 from zap_typist.ui.aba1.lead_card import LeadCardWidget
-from zap_typist.ui.aba1.lead_card_list import EMPTY_STATE_MSG, ERROR_MSG, LeadCardList
+from zap_typist.ui.aba1.lead_card_list import (
+    EMPTY_STATE_MSG,
+    ERROR_MSG,
+    PAGINATION_THRESHOLD,
+    LeadCardList,
+)
+from zap_typist.ui.aba1.lead_card_list_config import LeadCardListConfig
 
 
 @pytest.fixture(scope="module")
@@ -210,3 +217,94 @@ def test_no_pii_in_container_logs(
     assert any("rendered_lead_cards" in r.getMessage() for r in records), (
         "Log 'rendered_lead_cards' não encontrado — handler direto pode não estar funcionando"
     )
+
+
+def test_load_leads_without_pagination_under_threshold(
+    qapp: QApplication, qtbot: object, in_memory_session: Session
+) -> None:
+    """ST004 — sem paginação quando count <= PAGINATION_THRESHOLD."""
+    t = datetime(2026, 5, 4, 10, 0, 0, tzinfo=timezone.utc)  # noqa: UP017
+    for i in range(50):
+        _insert_lead(
+            in_memory_session, f"Pag0-{i}", LeadStatus.query_gerada.value, t, prefixo=f"{i:04d}"
+        )
+
+    config = LeadCardListConfig(page_size=50)
+    widget = LeadCardList(config=config)
+    qtbot.addWidget(widget)  # type: ignore[attr-defined]
+    widget.refresh(in_memory_session)
+
+    assert widget._nav_widget.isHidden(), "Nav não deve ser exibido quando count <= threshold"
+
+
+def test_load_leads_with_pagination_over_threshold(
+    qapp: QApplication, qtbot: object, in_memory_session: Session
+) -> None:
+    """ST004 — nav visível e page_size cards renderizados quando count > threshold."""
+    t = datetime(2026, 5, 4, 10, 0, 0, tzinfo=timezone.utc)  # noqa: UP017
+    # Inserir o suficiente para ultrapassar o threshold
+    needed = PAGINATION_THRESHOLD + 10
+    existing = (
+        in_memory_session.query(Lead)
+        .filter(Lead.status == LeadStatus.query_gerada.value)
+        .count()
+    )
+    for i in range(needed - existing):
+        _insert_lead(
+            in_memory_session,
+            f"PagN-{i}",
+            LeadStatus.query_gerada.value,
+            t,
+            prefixo=f"{5000 + i:04d}",
+        )
+
+    config = LeadCardListConfig(page_size=50)
+    widget = LeadCardList(config=config)
+    qtbot.addWidget(widget)  # type: ignore[attr-defined]
+    widget.refresh(in_memory_session)
+
+    assert not widget._nav_widget.isHidden(), "Nav deve ser exibido quando count > threshold"
+    cards = widget.findChildren(LeadCardWidget)
+    assert len(cards) == 50, (
+        f"Deve renderizar exatamente page_size=50 cards, encontrou {len(cards)}"
+    )
+
+
+def test_pagination_navigation(
+    qapp: QApplication, qtbot: object, in_memory_session: Session
+) -> None:
+    """ST004 — clicar em Próximo avança página e renderiza novo batch."""
+    t = datetime(2026, 5, 4, 10, 0, 0, tzinfo=timezone.utc)  # noqa: UP017
+    needed = PAGINATION_THRESHOLD + 10
+    existing = (
+        in_memory_session.query(Lead)
+        .filter(Lead.status == LeadStatus.query_gerada.value)
+        .count()
+    )
+    for i in range(needed - existing):
+        _insert_lead(
+            in_memory_session,
+            f"NavT-{i}",
+            LeadStatus.query_gerada.value,
+            t,
+            prefixo=f"{7000 + i:04d}",
+        )
+
+    config = LeadCardListConfig(page_size=50)
+    widget = LeadCardList(config=config)
+    qtbot.addWidget(widget)  # type: ignore[attr-defined]
+    widget.refresh(in_memory_session)
+
+    assert config.current_page == 0
+
+    page_change_signals: list[None] = []
+    widget.page_change_requested.connect(lambda: page_change_signals.append(None))
+    qtbot.mouseClick(widget._next_btn, Qt.MouseButton.LeftButton)  # type: ignore[attr-defined]
+
+    assert config.current_page == 1, "current_page deve avançar para 1"
+    assert len(page_change_signals) == 1, "page_change_requested deve ser emitido uma vez"
+
+    # Simular o que tab1 faria ao receber page_change_requested
+    widget.refresh_current_page(in_memory_session)
+    cards = widget.findChildren(LeadCardWidget)
+    assert len(cards) > 0, "Deve haver cards na segunda página"

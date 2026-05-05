@@ -1,7 +1,7 @@
 # NOTICE — Atribuições de Software de Terceiros
 
 **Projeto:** Zap Typist
-**Gerado em:** 2026-05-03
+**Gerado em:** 2026-05-04
 
 Este projeto utiliza os seguintes componentes de software de terceiros:
 
